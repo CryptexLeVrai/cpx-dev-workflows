@@ -1,0 +1,111 @@
+
+name: CPX DEV - Discord Notifications
+
+on:
+  workflow_call:
+    inputs:
+      project_name:
+        required: true
+        type: string
+      project_type:
+        required: true
+        type: string
+      embed_color:
+        required: true
+        type: number
+      image_url:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      DISCORD_WEBHOOK_URL:
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PROJECT_NAME: ${{ inputs.project_name }}
+          PROJECT_TYPE: ${{ inputs.project_type }}
+          EMBED_COLOR: ${{ inputs.embed_color }}
+          IMAGE_URL: ${{ inputs.image_url }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          AUTHOR: ${{ github.actor }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_SHA: ${{ github.sha }}
+
+        run: |
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+
+          jq -n \
+            --arg title "$PROJECT_NAME" \
+            --arg category "$PROJECT_TYPE" \
+            --arg message "$COMMIT_MESSAGE" \
+            --arg author "$AUTHOR" \
+            --arg branch "$BRANCH" \
+            --arg sha "$SHORT_SHA" \
+            --arg url "$COMMIT_URL" \
+            --arg repo "$REPOSITORY" \
+            --arg image "$IMAGE_URL" \
+            --argjson color "$EMBED_COLOR" \
+            '{
+              embeds: [{
+                author: {
+                  name: "CPX DEV • GITHUB NOTIFICATIONS"
+                },
+                title: $title,
+                description: ("**Nouveau commit poussé**\n\n" + $message),
+                color: $color,
+                thumbnail: (
+                  if $image == "" then null
+                  else {url: $image}
+                  end
+                ),
+                fields: [
+                  {
+                    name: "🧩 Projet",
+                    value: $title,
+                    inline: true
+                  },
+                  {
+                    name: "🛠️ Développement",
+                    value: $category,
+                    inline: true
+                  },
+                  {
+                    name: "👤 Auteur",
+                    value: $author,
+                    inline: true
+                  },
+                  {
+                    name: "🌿 Branche",
+                    value: ("`" + $branch + "`"),
+                    inline: true
+                  },
+                  {
+                    name: "🔖 Commit",
+                    value: ("`" + $sha + "`"),
+                    inline: true
+                  },
+                  {
+                    name: "📁 Dépôt",
+                    value: $repo,
+                    inline: false
+                  }
+                ],
+                url: $url,
+                footer: {
+                  text: "CPX DEV • Notifications automatiques"
+                },
+                timestamp: (now | todate)
+              }]
+            }' | curl -fsS \
+              -H "Content-Type: application/json" \
+              -d @- \
+              "$DISCORD_WEBHOOK_URL"
